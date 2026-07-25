@@ -146,18 +146,21 @@
                             <p class="text-xs text-slate-500">Origin Warehouse - Port Terminal</p>
                         </div>
                     </div>
+                    
+                    <!-- Configurable Customs Clearance Milestone Container -->
                     <div class="flex items-start space-x-4 relative">
-                        <div class="h-8 w-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow">✓</div>
+                        <div id="customs-icon" class="h-8 w-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow">✓</div>
                         <div>
-                            <h5 class="font-bold text-slate-900 text-sm">Customs Clearance Processed</h5>
-                            <p class="text-xs text-slate-500">International Cargo Hub Control Point</p>
+                            <h5 id="customs-title" class="font-bold text-slate-900 text-sm">Customs Clearance Processed</h5>
+                            <p id="customs-desc" class="text-xs text-slate-500">International Cargo Hub Control Point</p>
                         </div>
                     </div>
+
                     <div class="flex items-start space-x-4 relative">
-                        <div id="step-3-icon" class="h-8 w-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow">➔</div>
+                        <div id="final-icon" class="h-8 w-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow">➔</div>
                         <div>
-                            <h5 id="step-3-title" class="font-bold text-slate-900 text-sm">Out for Delivery</h5>
-                            <p id="step-3-desc" class="text-xs text-slate-500">Courier Vehicle assigned to final destination zone</p>
+                            <h5 id="final-title" class="font-bold text-slate-900 text-sm">Out for Delivery</h5>
+                            <p id="final-desc" class="text-xs text-slate-500">Courier Vehicle assigned to final destination zone</p>
                         </div>
                     </div>
                 </div>
@@ -221,7 +224,11 @@
 
     <!-- Interactive JavaScript Engine -->
     <script>
-        // Database of Valid Tracking Codes with Receiver and Address Details
+        // ---------------------------------------------------------------------------
+        // CONFIGURABLE SHIPMENTS DATABASE
+        // ---------------------------------------------------------------------------
+        // customs.status options: "cleared", "pending", "inspection", "hold", "cancelled"
+        // ---------------------------------------------------------------------------
         const shipmentsData = {
             "GS-94821": {
                 service: "Priority Air Freight Express",
@@ -230,7 +237,11 @@
                 receiver: "Alexander Wright",
                 address: "42 Independence Avenue, Airport Residential, Accra, Ghana",
                 progress: 75,
-                statusText: "Out for Delivery"
+                customs: {
+                    status: "cleared",
+                    title: "Customs Clearance Processed",
+                    description: "International Cargo Hub Control Point — All duties cleared."
+                }
             },
             "GS-88204": {
                 service: "Ocean Freight Full Container (FCL)",
@@ -239,7 +250,24 @@
                 receiver: "Kwame Mensah",
                 address: "Plot 12 Heavy Industrial Area, Tema, Ghana",
                 progress: 40,
-                statusText: "Customs Clearance in Progress"
+                customs: {
+                    status: "inspection",
+                    title: "Customs Physical Inspection",
+                    description: "Container opened for random regulatory safety verification."
+                }
+            },
+            "GS-66601": {
+                service: "Restricted Cargo Freight",
+                date: "Cancelled",
+                location: "Secured Customs Confiscation Zone",
+                receiver: "Confidential",
+                address: "Restricted Port Zone B, Accra, Ghana",
+                progress: 10,
+                customs: {
+                    status: "cancelled",
+                    title: "Order Cancelled - Illegal Goods Detected",
+                    description: "Shipment opened during inspection; contraband/illegal items found. Order terminated."
+                }
             },
             "GS-33190": {
                 service: "Express Ground & Last-Mile Courier",
@@ -248,7 +276,11 @@
                 receiver: "Evelyn Addo",
                 address: "15 Liberation Road, Ridge, Accra, Ghana",
                 progress: 100,
-                statusText: "Delivered Successfully"
+                customs: {
+                    status: "cleared",
+                    title: "Fast-Track Border Clearance",
+                    description: "Automated land border scanning verified and released."
+                }
             }
         };
 
@@ -286,7 +318,7 @@
             }
         }
 
-        // 4. Main Tracker Simulation Handler with Strict Validation
+        // 4. Main Tracker Simulation Handler
         function simulateTracking() {
             const val = document.getElementById('main-tracking-input').value.trim().toUpperCase();
             if(val) {
@@ -294,7 +326,7 @@
             }
         }
 
-        // 5. Update Tracker UI, Progress Bar, Receiver, Address & Timeline
+        // 5. Update Tracker UI, Progress Bar, Receiver, Address & Customs Details
         function updateTrackerDisplay(code) {
             const resultCard = document.getElementById('tracking-result');
             resultCard.classList.remove('hidden');
@@ -309,20 +341,26 @@
                 const progressText = document.getElementById('progress-percentage');
                 const receiverEl = document.getElementById('res-receiver');
                 const addressEl = document.getElementById('res-address');
-                const step3Icon = document.getElementById('step-3-icon');
-                const step3Title = document.getElementById('step-3-title');
-                const step3Desc = document.getElementById('step-3-desc');
+                
+                const customsIcon = document.getElementById('customs-icon');
+                const customsTitle = document.getElementById('customs-title');
+                const customsDesc = document.getElementById('customs-desc');
+                
+                const finalIcon = document.getElementById('final-icon');
+                const finalTitle = document.getElementById('final-title');
+                const finalDesc = document.getElementById('final-desc');
+
                 const resDesc = document.getElementById('res-desc');
                 const resDate = document.getElementById('res-date');
                 const resLocation = document.getElementById('res-location');
 
-                // Reset text color defaults
+                // Reset text styling defaults
                 resDesc.className = "text-xs text-slate-500 mt-0.5";
                 resDate.className = "text-lg font-bold text-emerald-600";
                 resLocation.className = "text-xs text-slate-500 mt-0.5";
 
                 if(data) {
-                    // Valid tracking code
+                    // Valid tracking code found
                     resDesc.innerText = "Service: " + data.service;
                     resDate.innerText = data.date;
                     resLocation.innerText = "Current Location: " + data.location;
@@ -332,31 +370,63 @@
                     // Update Progress Bar
                     progressBar.style.width = data.progress + '%';
                     progressText.innerText = data.progress + '%';
+
+                    // Update Customs Clearance Milestone Details from object
+                    customsTitle.innerText = data.customs.title;
+                    customsDesc.innerText = data.customs.description;
+
+                    // Style Customs Icon & Status based on cancellation or clearance state
+                    if(data.customs.status === 'cancelled') {
+                        customsIcon.className = "h-8 w-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow animate-pulse";
+                        customsIcon.innerText = "✕";
+                        resDate.className = "text-lg font-bold text-red-600";
+                        resLocation.className = "text-xs text-red-600 font-semibold mt-0.5";
+                    } else if(data.customs.status === 'hold') {
+                        customsIcon.className = "h-8 w-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
+                        customsIcon.innerText = "!";
+                    } else if(data.customs.status === 'inspection') {
+                        customsIcon.className = "h-8 w-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow";
+                        customsIcon.innerText = "➔";
+                    } else if(data.customs.status === 'pending') {
+                        customsIcon.className = "h-8 w-8 rounded-full bg-slate-400 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
+                        customsIcon.innerText = "⌛";
+                    } else {
+                        // cleared
+                        customsIcon.className = "h-8 w-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
+                        customsIcon.innerText = "✓";
+                    }
                     
-                    // Customize step 3 based on delivery status
-                    if(data.progress === 100) {
+                    // Customize final step and timeline based on status
+                    if(data.customs.status === 'cancelled') {
+                        progressBar.className = "bg-red-600 h-full rounded-full transition-all duration-700 ease-out";
+                        finalIcon.className = "h-8 w-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
+                        finalIcon.innerText = "✕";
+                        finalTitle.innerText = "Order Cancelled & Confiscated";
+                        finalDesc.innerText = "Goods seized by regulatory enforcement authorities.";
+                        resDesc.className = "text-xs text-red-600 font-semibold mt-0.5";
+                    } else if(data.progress === 100) {
                         progressBar.className = "bg-emerald-600 h-full rounded-full transition-all duration-700 ease-out";
-                        step3Icon.className = "h-8 w-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
-                        step3Icon.innerText = "✓";
-                        step3Title.innerText = "Delivered Successfully";
-                        step3Desc.innerText = "Signed and received by consignee.";
+                        finalIcon.className = "h-8 w-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
+                        finalIcon.innerText = "✓";
+                        finalTitle.innerText = "Delivered Successfully";
+                        finalDesc.innerText = "Signed and received by consignee.";
                     } else if(data.progress === 40) {
                         progressBar.className = "bg-amber-500 h-full rounded-full transition-all duration-700 ease-out";
-                        step3Icon.className = "h-8 w-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow";
-                        step3Icon.innerText = "➔";
-                        step3Title.innerText = "Customs Clearance in Progress";
-                        step3Desc.innerText = "Inspecting container documents at port terminal.";
+                        finalIcon.className = "h-8 w-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow";
+                        finalIcon.innerText = "➔";
+                        finalTitle.innerText = "Processing Port Arrival";
+                        finalDesc.innerText = "Container docked at terminal platform.";
                     } else {
                         progressBar.className = "bg-indigo-600 h-full rounded-full transition-all duration-700 ease-out";
-                        step3Icon.className = "h-8 w-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow";
-                        step3Icon.innerText = "➔";
-                        step3Title.innerText = "Out for Delivery";
-                        step3Desc.innerText = "Courier Vehicle assigned to final destination zone";
+                        finalIcon.className = "h-8 w-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow";
+                        finalIcon.innerText = "➔";
+                        finalTitle.innerText = "Out for Delivery";
+                        finalDesc.innerText = "Courier Vehicle assigned to final destination zone";
                     }
 
                     timelineEl.style.display = 'block';
                 } else {
-                    // Invalid tracking code error state with RED alert text
+                    // Invalid tracking code error state
                     resDesc.innerText = "Status: Tracking number not found in system.";
                     resDesc.className = "text-xs text-red-600 font-semibold mt-0.5";
 
