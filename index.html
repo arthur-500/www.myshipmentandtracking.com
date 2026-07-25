@@ -94,9 +94,12 @@
             </div>
 
             <!-- Tracker Input Interface -->
-            <div class="flex gap-3 mb-8">
+            <div class="flex flex-col sm:flex-row gap-3 mb-8">
                 <input type="text" id="main-tracking-input" value="" placeholder="Enter tracking code..." class="flex-grow px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-600 font-semibold text-slate-800 uppercase">
-                <button type="button" onclick="simulateTracking()" class="bg-slate-900 hover:bg-slate-800 text-white font-semibold px-6 py-3 rounded-xl transition text-sm">Check Status</button>
+                <div class="flex gap-2">
+                    <button type="button" onclick="simulateTracking()" class="flex-1 sm:flex-none bg-slate-900 hover:bg-slate-800 text-white font-semibold px-6 py-3 rounded-xl transition text-sm">Check Status</button>
+                    <button type="button" id="live-transit-btn" onclick="toggleLiveTransitSimulation()" class="hidden flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-3 rounded-xl transition text-sm shadow-md animate-pulse">Simulate Live Transit 📡</button>
+                </div>
             </div>
 
             <!-- Dynamic Result Card (Hidden by Default) -->
@@ -225,9 +228,7 @@
     <!-- Interactive JavaScript Engine -->
     <script>
         // ---------------------------------------------------------------------------
-        // CONFIGURABLE SHIPMENTS DATABASE
-        // ---------------------------------------------------------------------------
-        // customs.status options: "cleared", "pending", "inspection", "hold", "cancelled"
+        // CONFIGURABLE SHIPMENTS DATABASE (With Live Transit Checkpoints)
         // ---------------------------------------------------------------------------
         const shipmentsData = {
             "GS-94821": {
@@ -241,7 +242,13 @@
                     status: "cleared",
                     title: "Customs Clearance Processed",
                     description: "International Cargo Hub Control Point — All duties cleared."
-                }
+                },
+                liveCheckpoints: [
+                    { progress: 20, location: "Departure Airport Cargo Terminal" },
+                    { progress: 50, location: "Mid-Atlantic Airspace Corridor" },
+                    { progress: 75, location: "Regional Distribution Hub" },
+                    { progress: 100, location: "Delivered to Recipient (42 Independence Ave)" }
+                ]
             },
             "GS-88204": {
                 service: "Ocean Freight Full Container (FCL)",
@@ -254,7 +261,13 @@
                     status: "inspection",
                     title: "Customs Physical Inspection",
                     description: "Container opened for random regulatory safety verification."
-                }
+                },
+                liveCheckpoints: [
+                    { progress: 15, location: "Origin Seaport Loading Dock" },
+                    { progress: 40, location: "Tema Port Terminal, Berth 4" },
+                    { progress: 70, location: "Customs Inspection Bay" },
+                    { progress: 100, location: "Delivered to Heavy Industrial Area" }
+                ]
             },
             "GS-66601": {
                 service: "Restricted Cargo Freight",
@@ -267,7 +280,8 @@
                     status: "cancelled",
                     title: "Order Cancelled - Illegal Goods Detected",
                     description: "Shipment opened during inspection; contraband/illegal items found. Order terminated."
-                }
+                },
+                liveCheckpoints: []
             },
             "GS-33190": {
                 service: "Express Ground & Last-Mile Courier",
@@ -280,9 +294,17 @@
                     status: "cleared",
                     title: "Fast-Track Border Clearance",
                     description: "Automated land border scanning verified and released."
-                }
+                },
+                liveCheckpoints: [
+                    { progress: 50, location: "Regional Transit Highway" },
+                    { progress: 100, location: "Delivered at 15 Liberation Road" }
+                ]
             }
         };
+
+        let liveInterval = null;
+        let currentCheckpointIndex = 0;
+        let activeTrackingCode = null;
 
         // 1. Mobile Menu Toggle
         const menuBtn = document.getElementById('menu-btn');
@@ -326,125 +348,178 @@
             }
         }
 
-        // 5. Update Tracker UI, Progress Bar, Receiver, Address & Customs Details
+        // 5. Toggle Live Transit Simulation for customer preview
+        function toggleLiveTransitSimulation() {
+            const liveBtn = document.getElementById('live-transit-btn');
+            const data = shipmentsData[activeTrackingCode];
+
+            if (!data || !data.liveCheckpoints || data.liveCheckpoints.length === 0) return;
+
+            if (liveInterval) {
+                // Stop simulation
+                clearInterval(liveInterval);
+                liveInterval = null;
+                liveBtn.innerText = "Simulate Live Transit 📡";
+                liveBtn.classList.remove('bg-amber-600', 'hover:bg-amber-500');
+                liveBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500');
+            } else {
+                // Start live transit update loop every 2.5 seconds
+                liveBtn.innerText = "Stop Live Simulation ⏹️";
+                liveBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500');
+                liveBtn.classList.add('bg-amber-600', 'hover:bg-amber-500');
+
+                currentCheckpointIndex = 0;
+                liveInterval = setInterval(() => {
+                    if (currentCheckpointIndex < data.liveCheckpoints.length) {
+                        const cp = data.liveCheckpoints[currentCheckpointIndex];
+                        data.progress = cp.progress;
+                        data.location = cp.location;
+                        
+                        updateTrackerUIValues(activeTrackingCode, data);
+                        currentCheckpointIndex++;
+                    } else {
+                        clearInterval(liveInterval);
+                        liveInterval = null;
+                        liveBtn.innerText = "Simulation Complete ✓";
+                        liveBtn.classList.remove('bg-amber-600');
+                        liveBtn.classList.add('bg-indigo-600');
+                    }
+                }, 2500);
+            }
+        }
+
+        // 6. Update Tracker UI, Progress Bar, Receiver, Address & Customs Details
         function updateTrackerDisplay(code) {
+            // Clear any active live loops from previous queries
+            if (liveInterval) {
+                clearInterval(liveInterval);
+                liveInterval = null;
+            }
+
+            activeTrackingCode = code;
             const resultCard = document.getElementById('tracking-result');
+            const liveBtn = document.getElementById('live-transit-btn');
             resultCard.classList.remove('hidden');
             resultCard.style.opacity = '0.4';
 
             setTimeout(() => {
-                document.getElementById('res-code').innerText = code;
-                
                 const data = shipmentsData[code];
-                const timelineEl = document.getElementById('timeline-container');
-                const progressBar = document.getElementById('progress-bar-fill');
-                const progressText = document.getElementById('progress-percentage');
-                const receiverEl = document.getElementById('res-receiver');
-                const addressEl = document.getElementById('res-address');
-                
-                const customsIcon = document.getElementById('customs-icon');
-                const customsTitle = document.getElementById('customs-title');
-                const customsDesc = document.getElementById('customs-desc');
-                
-                const finalIcon = document.getElementById('final-icon');
-                const finalTitle = document.getElementById('final-title');
-                const finalDesc = document.getElementById('final-desc');
-
-                const resDesc = document.getElementById('res-desc');
-                const resDate = document.getElementById('res-date');
-                const resLocation = document.getElementById('res-location');
-
-                // Reset text styling defaults
-                resDesc.className = "text-xs text-slate-500 mt-0.5";
-                resDate.className = "text-lg font-bold text-emerald-600";
-                resLocation.className = "text-xs text-slate-500 mt-0.5";
-
-                if(data) {
-                    // Valid tracking code found
-                    resDesc.innerText = "Service: " + data.service;
-                    resDate.innerText = data.date;
-                    resLocation.innerText = "Current Location: " + data.location;
-                    receiverEl.innerText = data.receiver;
-                    addressEl.innerText = data.address;
-                    
-                    // Update Progress Bar
-                    progressBar.style.width = data.progress + '%';
-                    progressText.innerText = data.progress + '%';
-
-                    // Update Customs Clearance Milestone Details from object
-                    customsTitle.innerText = data.customs.title;
-                    customsDesc.innerText = data.customs.description;
-
-                    // Style Customs Icon & Status based on cancellation or clearance state
-                    if(data.customs.status === 'cancelled') {
-                        customsIcon.className = "h-8 w-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow animate-pulse";
-                        customsIcon.innerText = "✕";
-                        resDate.className = "text-lg font-bold text-red-600";
-                        resLocation.className = "text-xs text-red-600 font-semibold mt-0.5";
-                    } else if(data.customs.status === 'hold') {
-                        customsIcon.className = "h-8 w-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
-                        customsIcon.innerText = "!";
-                    } else if(data.customs.status === 'inspection') {
-                        customsIcon.className = "h-8 w-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow";
-                        customsIcon.innerText = "➔";
-                    } else if(data.customs.status === 'pending') {
-                        customsIcon.className = "h-8 w-8 rounded-full bg-slate-400 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
-                        customsIcon.innerText = "⌛";
-                    } else {
-                        // cleared
-                        customsIcon.className = "h-8 w-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
-                        customsIcon.innerText = "✓";
-                    }
-                    
-                    // Customize final step and timeline based on status
-                    if(data.customs.status === 'cancelled') {
-                        progressBar.className = "bg-red-600 h-full rounded-full transition-all duration-700 ease-out";
-                        finalIcon.className = "h-8 w-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
-                        finalIcon.innerText = "✕";
-                        finalTitle.innerText = "Order Cancelled & Confiscated";
-                        finalDesc.innerText = "Goods seized by regulatory enforcement authorities.";
-                        resDesc.className = "text-xs text-red-600 font-semibold mt-0.5";
-                    } else if(data.progress === 100) {
-                        progressBar.className = "bg-emerald-600 h-full rounded-full transition-all duration-700 ease-out";
-                        finalIcon.className = "h-8 w-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
-                        finalIcon.innerText = "✓";
-                        finalTitle.innerText = "Delivered Successfully";
-                        finalDesc.innerText = "Signed and received by consignee.";
-                    } else if(data.progress === 40) {
-                        progressBar.className = "bg-amber-500 h-full rounded-full transition-all duration-700 ease-out";
-                        finalIcon.className = "h-8 w-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow";
-                        finalIcon.innerText = "➔";
-                        finalTitle.innerText = "Processing Port Arrival";
-                        finalDesc.innerText = "Container docked at terminal platform.";
-                    } else {
-                        progressBar.className = "bg-indigo-600 h-full rounded-full transition-all duration-700 ease-out";
-                        finalIcon.className = "h-8 w-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow";
-                        finalIcon.innerText = "➔";
-                        finalTitle.innerText = "Out for Delivery";
-                        finalDesc.innerText = "Courier Vehicle assigned to final destination zone";
-                    }
-
-                    timelineEl.style.display = 'block';
+                if (data && data.liveCheckpoints && data.liveCheckpoints.length > 0) {
+                    liveBtn.classList.remove('hidden');
+                    liveBtn.innerText = "Simulate Live Transit 📡";
+                    liveBtn.className = "flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-3 rounded-xl transition text-sm shadow-md animate-pulse";
                 } else {
-                    // Invalid tracking code error state
-                    resDesc.innerText = "Status: Tracking number not found in system.";
-                    resDesc.className = "text-xs text-red-600 font-semibold mt-0.5";
-
-                    resDate.innerText = "---";
-                    resDate.className = "text-lg font-bold text-red-600";
-
-                    resLocation.innerText = "Please check your code and try again.";
-                    resLocation.className = "text-xs text-red-600 font-medium mt-0.5";
-
-                    receiverEl.innerText = "---";
-                    addressEl.innerText = "---";
-                    progressBar.style.width = '0%';
-                    progressText.innerText = '0%';
-                    timelineEl.style.display = 'none';
+                    liveBtn.classList.add('hidden');
                 }
-                
+
+                updateTrackerUIValues(code, data);
                 resultCard.style.opacity = '1';
             }, 200);
+        }
+
+        function updateTrackerUIValues(code, data) {
+            document.getElementById('res-code').innerText = code;
+            const timelineEl = document.getElementById('timeline-container');
+            const progressBar = document.getElementById('progress-bar-fill');
+            const progressText = document.getElementById('progress-percentage');
+            const receiverEl = document.getElementById('res-receiver');
+            const addressEl = document.getElementById('res-address');
+            
+            const customsIcon = document.getElementById('customs-icon');
+            const customsTitle = document.getElementById('customs-title');
+            const customsDesc = document.getElementById('customs-desc');
+            
+            const finalIcon = document.getElementById('final-icon');
+            const finalTitle = document.getElementById('final-title');
+            const finalDesc = document.getElementById('final-desc');
+
+            const resDesc = document.getElementById('res-desc');
+            const resDate = document.getElementById('res-date');
+            const resLocation = document.getElementById('res-location');
+
+            // Reset text styling defaults
+            resDesc.className = "text-xs text-slate-500 mt-0.5";
+            resDate.className = "text-lg font-bold text-emerald-600";
+            resLocation.className = "text-xs text-slate-500 mt-0.5";
+
+            if(data) {
+                resDesc.innerText = "Service: " + data.service;
+                resDate.innerText = data.date;
+                resLocation.innerText = "Current Location: " + data.location;
+                receiverEl.innerText = data.receiver;
+                addressEl.innerText = data.address;
+                
+                // Update Progress Bar
+                progressBar.style.width = data.progress + '%';
+                progressText.innerText = data.progress + '%';
+
+                // Update Customs Clearance Milestone Details
+                customsTitle.innerText = data.customs.title;
+                customsDesc.innerText = data.customs.description;
+
+                if(data.customs.status === 'cancelled') {
+                    customsIcon.className = "h-8 w-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow animate-pulse";
+                    customsIcon.innerText = "✕";
+                    resDate.className = "text-lg font-bold text-red-600";
+                    resLocation.className = "text-xs text-red-600 font-semibold mt-0.5";
+                } else if(data.customs.status === 'hold') {
+                    customsIcon.className = "h-8 w-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
+                    customsIcon.innerText = "!";
+                } else if(data.customs.status === 'inspection') {
+                    customsIcon.className = "h-8 w-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow";
+                    customsIcon.innerText = "➔";
+                } else if(data.customs.status === 'pending') {
+                    customsIcon.className = "h-8 w-8 rounded-full bg-slate-400 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
+                    customsIcon.innerText = "⌛";
+                } else {
+                    customsIcon.className = "h-8 w-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
+                    customsIcon.innerText = "✓";
+                }
+                
+                if(data.customs.status === 'cancelled') {
+                    progressBar.className = "bg-red-600 h-full rounded-full transition-all duration-700 ease-out";
+                    finalIcon.className = "h-8 w-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
+                    finalIcon.innerText = "✕";
+                    finalTitle.innerText = "Order Cancelled & Confiscated";
+                    finalDesc.innerText = "Goods seized by regulatory enforcement authorities.";
+                    resDesc.className = "text-xs text-red-600 font-semibold mt-0.5";
+                } else if(data.progress >= 100) {
+                    progressBar.className = "bg-emerald-600 h-full rounded-full transition-all duration-700 ease-out";
+                    finalIcon.className = "h-8 w-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs z-10 shadow";
+                    finalIcon.innerText = "✓";
+                    finalTitle.innerText = "Delivered Successfully";
+                    finalDesc.innerText = "Signed and received by consignee.";
+                } else if(data.progress === 40) {
+                    progressBar.className = "bg-amber-500 h-full rounded-full transition-all duration-700 ease-out";
+                    finalIcon.className = "h-8 w-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow";
+                    finalIcon.innerText = "➔";
+                    finalTitle.innerText = "Processing Port Arrival";
+                    finalDesc.innerText = "Container docked at terminal platform.";
+                } else {
+                    progressBar.className = "bg-indigo-600 h-full rounded-full transition-all duration-700 ease-out";
+                    finalIcon.className = "h-8 w-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs animate-pulse z-10 shadow";
+                    finalIcon.innerText = "➔";
+                    finalTitle.innerText = "Out for Delivery";
+                    finalDesc.innerText = "Courier Vehicle assigned to final destination zone";
+                }
+
+                timelineEl.style.display = 'block';
+            } else {
+                resDesc.innerText = "Status: Tracking number not found in system.";
+                resDesc.className = "text-xs text-red-600 font-semibold mt-0.5";
+
+                resDate.innerText = "---";
+                resDate.className = "text-lg font-bold text-red-600";
+
+                resLocation.innerText = "Please check your code and try again.";
+                resLocation.className = "text-xs text-red-600 font-medium mt-0.5";
+
+                receiverEl.innerText = "---";
+                addressEl.innerText = "---";
+                progressBar.style.width = '0%';
+                progressText.innerText = '0%';
+                timelineEl.style.display = 'none';
+            }
         }
     </script>
 </body>
